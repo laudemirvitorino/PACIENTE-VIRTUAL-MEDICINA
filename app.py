@@ -1,60 +1,76 @@
 import streamlit as st
 import google.generativeai as genai
+from gtts import gTTS
+import os
+from streamlit_mic_recorder import mic_recorder
 
-# Configuração da página
-st.set_page_config(page_title="Simulador de Paciente Virtual", layout="centered")
+st.set_page_config(page_title="Paciente Virtual com Voz", layout="centered")
 
-# --- BARRA LATERAL: CONFIGURAÇÃO DO PROFESSOR ---
+# --- CONFIGURAÇÃO DO PROFESSOR (Igual ao anterior) ---
 with st.sidebar:
-    st.title("⚙️ Configuração")
-    api_key = st.text_input("Insira sua Gemini API Key:", type="password")
-    senha_prof = st.text_input("Senha do Professor (para editar o caso):", type="password")
+    st.title("⚙️ Painel do Professor")
+    api_key = st.text_input("Gemini API Key:", type="password")
+    senha_prof = st.text_input("Senha:", type="password")
     
-    if senha_prof == "L@uvitorino1977": # Você pode mudar essa senha
-        st.subheader("Configuração do Caso Clínico")
-        caso = st.text_area("Instruções de comportamento e prontuário:", 
-                            height=300,
-                            help="Defina aqui quem é o paciente, o que ele sente e como deve agir.")
-        if st.button("Salvar e Iniciar Caso"):
+    if senha_prof == "L@uvitorino1977":
+        caso = st.text_area("Prontuário/Instruções do Paciente:", height=200)
+        if st.button("Salvar Caso"):
             st.session_state.contexto = caso
             st.session_state.messages = []
-            st.success("Caso carregado!")
+            st.success("Paciente pronto!")
+
+# --- FUNÇÃO DE VOZ DO PACIENTE ---
+def falar(texto):
+    tts = gTTS(text=texto, lang='pt', slow=False)
+    tts.save("resposta.mp3")
+    return "resposta.mp3"
 
 # --- INTERFACE DO ALUNO ---
-st.header("🏥 Consulta Médica Virtual")
-st.info("Realize a anamnese com o paciente abaixo.")
+st.header("🏥 Consulta por Voz")
 
 if api_key and "contexto" in st.session_state:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash') # Versão rápida e eficiente
+    model = genai.GenerativeModel('gemini-1.5-flash')
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Exibir histórico
+    # Chat histórico
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Input do aluno
-    if prompt := st.chat_input("Pergunte algo ao paciente..."):
+    # ENTRADA POR VOZ
+    st.write("Clique no microfone para falar com o paciente:")
+    audio_gravado = mic_recorder(start_prompt="🎤 Iniciar Anamnese (Voz)", stop_prompt="🛑 Parar e Enviar", key='recorder')
+
+    # Processar se houver áudio ou texto
+    texto_entrada = ""
+    if audio_gravado:
+        # Nota: Para traduzir áudio em texto perfeitamente no navegador, 
+        # o ideal seria usar a própria API do Gemini que aceita arquivos de áudio.
+        # Por simplicidade aqui, vamos focar no fluxo de resposta por voz.
+        st.warning("O processamento de voz para texto exige configuração de áudio do servidor. Use o chat abaixo para testar a resposta sonora do paciente.")
+
+    # ENTRADA POR TEXTO (Alternativa)
+    if prompt := st.chat_input("Ou digite sua pergunta aqui..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Preparar o contexto para a IA
-        instrucao_sistema = f"Aja estritamente como este paciente: {st.session_state.contexto}. Não saia do personagem. Responda de forma natural humana."
+        # Resposta do Paciente
+        instrucao = f"Aja como este paciente: {st.session_state.contexto}. Responda de forma curta e humana."
+        response = model.generate_content(instrucao + "\nPergunta do médico: " + prompt)
         
-        try:
-            # Envia o contexto + a pergunta do aluno
-            response = model.generate_content(instrucao_sistema + "\nAluno: " + prompt)
-            with st.chat_message("assistant"):
-                st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
-        except Exception as e:
-            st.error(f"Erro: {e}")
+        texto_resposta = response.text
+        
+        with st.chat_message("assistant"):
+            st.markdown(texto_resposta)
+            # Gera o áudio da resposta
+            audio_path = falar(texto_resposta)
+            st.audio(audio_path, format="audio/mp3", autoplay=True) # Autoplay faz ele falar na hora
+            
+        st.session_state.messages.append({"role": "assistant", "content": texto_resposta})
+
 else:
-    if not api_key:
-        st.warning("Por favor, insira a API Key na barra lateral.")
-    if "contexto" not in st.session_state:
-        st.warning("Aguarde o professor configurar o caso clínico.")
+    st.info("Aguarde a configuração do professor.")
