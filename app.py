@@ -1,163 +1,132 @@
 import streamlit as st
 import google.generativeai as genai
-from gtts import gTTS
-import os
-from streamlit_mic_recorder import mic_recorder
-import tempfile
 
 # 1. CONFIGURAÇÃO DA PÁGINA
-st.set_page_config(page_title="Simulador de Paciente Virtual - Medicina", page_icon="🏥", layout="centered")
+st.set_page_config(page_title="Simulador de Paciente Virtual", page_icon="🩺", layout="centered")
 
-# Estilização visual básica
+# Estilização para uma aparência limpa e profissional
 st.markdown("""
     <style>
-    .stButton>button { width: 100%; border-radius: 20px; }
-    .stChatFloatingInputContainer { padding-bottom: 20px; }
+    .stButton>button { width: 100%; border-radius: 8px; }
+    .stChatMessage { border-radius: 15px; margin-bottom: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. BARRA LATERAL: ÁREA DO PROFESSOR (OCULTA POR SENHA)
+# 2. BARRA LATERAL: PAINEL DO PROFESSOR
 with st.sidebar:
-    st.title("👨‍🏫 Painel do Professor")
-    api_key = st.text_input("1. Cole sua Gemini API Key:", type="password")
+    st.title("👨‍🏫 Área do Professor")
+    api_key = st.text_input("1. Gemini API Key:", type="password", help="Insira a chave gerada no Google AI Studio")
     senha_prof = st.text_input("2. Senha de Acesso:", type="password")
     
-    # A senha padrão é medicina123 (você pode alterar na linha abaixo)
+    # Senha padrão: medicina123
     if senha_prof == "L@uvitorino1977":
-        st.success("Acesso Liberado")
+        st.success("Acesso Autorizado")
         st.divider()
         caso_clinico = st.text_area(
             "3. Defina o Caso Clínico (Prompt):", 
-            placeholder="Ex: Você é o Sr. João, 65 anos, fumante, com dor no peito...",
+            placeholder="Ex: Paciente é o Sr. Alberto, 70 anos, com dispneia progressiva. Ele é ex-fumante e nega febre...",
             height=300
         )
-        if st.button("🚀 Iniciar/Resetar Caso"):
+        if st.button("🚀 Salvar e Iniciar Simulação"):
             st.session_state.contexto = caso_clinico
             st.session_state.messages = []
             st.session_state.finalizado = False
-            st.success("Caso carregado! O aluno já pode começar.")
+            st.success("Caso carregado com sucesso!")
     else:
         st.info("Insira a senha para configurar o paciente.")
 
-    if "messages" in st.session_state and len(st.session_state.messages) > 0:
+    # Botão de Finalização (Só aparece se houver uma conversa em curso)
+    if "messages" in st.session_state and len(st.session_state.messages) > 0 and not st.session_state.get("finalizado", False):
         st.divider()
-        if st.button("🏁 ENCERRAR E AVALIAR ALUNO", type="primary"):
+        st.warning("Clique abaixo para encerrar o atendimento:")
+        if st.button("🏁 ENCERRAR E RECEBER AVALIAÇÃO", type="primary"):
             st.session_state.finalizado = True
+            st.rerun()
 
-# 3. LÓGICA PRINCIPAL DO APLICATIVO
+# 3. INTERFACE PRINCIPAL
 st.header("🏥 Consulta Médica Virtual")
 
+# Verifica se o professor já configurou o básico
 if api_key and "contexto" in st.session_state:
     genai.configure(api_key=api_key)
-    # Utilizamos o modelo Flash para respostas rápidas
     model = genai.GenerativeModel('gemini-1.5-flash')
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # --- TELA DE AVALIAÇÃO FINAL ---
+    # --- CENÁRIO A: EXIBIR AVALIAÇÃO FINAL ---
     if st.session_state.get("finalizado", False):
         st.subheader("📋 Relatório de Desempenho do Aluno")
         
-        with st.spinner("O Preceptor está analisando a consulta..."):
-            # Construindo o histórico para a avaliação
+        with st.spinner("O Preceptor Médico está analisando sua anamnese..."):
+            # Concatena a conversa para análise
             historico_conversa = ""
             for m in st.session_state.messages:
                 autor = "Aluno" if m["role"] == "user" else "Paciente"
                 historico_conversa += f"{autor}: {m['content']}\n"
 
-            prompt_feedback = f"""
-            Você é um preceptor médico extremamente rigoroso e experiente. 
-            Analise a anamnese feita pelo aluno com base no caso clínico: {st.session_state.contexto}.
+            prompt_avaliacao = f"""
+            Você é um preceptor médico sênior, extremamente rigoroso e criterioso.
+            Analise a anamnese realizada pelo aluno com base no caso clínico original: {st.session_state.contexto}.
             
-            Sua tarefa é avaliar o desempenho do aluno no seguinte histórico:
+            HISTÓRICO DA CONSULTA:
             {historico_conversa}
             
-            Forneça um relatório detalhado com:
-            1. PONTOS POSITIVOS: O que foi perguntado corretamente.
-            2. PONTOS NEGATIVOS/FALTANTES: O que o aluno esqueceu ou errou na técnica (Seja muito criterioso).
-            3. POSTURA E EMPATIA: Avalie a forma como o aluno falou com o paciente.
-            4. NOTA FINAL: De 0 a 10 (Seja exigente. Notas 10 são apenas para perfeição técnica e humana).
-            
-            Responda de forma profissional e direta.
+            FORNEÇA SUA AVALIAÇÃO SEGUINDO ESTA ESTRUTURA:
+            1. PONTOS POSITIVOS: O que o aluno perguntou corretamente?
+            2. PONTOS NEGATIVOS E OMISSÕES: O que o aluno esqueceu de investigar? Onde ele falhou na técnica semiológica ou na exploração da queixa? Seja exigente.
+            3. POSTURA E TÉCNICA: Avalie se a linguagem foi adequada e se houve empatia.
+            4. NOTA FINAL: Atribua uma nota de 0 a 10 (Seja rigoroso. Notas 10 são raríssimas e apenas para anamneses completas e perfeitas).
             """
             
             try:
-                feedback = model.generate_content(prompt_feedback)
+                feedback = model.generate_content(prompt_avaliacao)
                 st.markdown(feedback.text)
             except Exception as e:
                 st.error(f"Erro ao gerar avaliação: {e}")
         
-        if st.button("Voltar para a Consulta"):
+        if st.button("Reiniciar Novo Atendimento"):
             st.session_state.finalizado = False
+            st.session_state.messages = []
             st.rerun()
 
-    # --- TELA DE CHAT (CONSULTA EM ANDAMENTO) ---
+    # --- CENÁRIO B: CONSULTA EM ANDAMENTO ---
     else:
-        st.info("Paciente na sala. Comece a anamnese por voz ou texto.")
+        st.info("O paciente está aguardando. Comece a anamnese abaixo.")
 
-        # Exibir histórico de mensagens
+        # Exibir balões de chat
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        # Interface de Entrada (Voz e Texto)
-        st.divider()
-        col_voz, col_texto = st.columns([1, 4])
-        
-        with col_voz:
-            audio_data = mic_recorder(start_prompt="🎤 Falar", stop_prompt="🛑 Enviar", key='recorder')
-
-        with col_texto:
-            prompt_texto = st.chat_input("Digite sua pergunta...")
-
-        # Processar entrada do aluno
-        input_usuario = None
-        conteudo_gemini = []
-
-        if audio_data:
-            input_usuario = "🎤 [Mensagem de Voz enviada]"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
-                tmp_audio.write(audio_data['bytes'])
-                tmp_audio_path = tmp_audio.name
-            
-            # Envia áudio para o Gemini ouvir
-            audio_file = genai.upload_file(path=tmp_audio_path, mime_type="audio/wav")
-            conteudo_gemini = [
-                f"Aja estritamente como o paciente descrito: {st.session_state.contexto}. Ouça o áudio do aluno e responda.",
-                audio_file
-            ]
-        elif prompt_texto:
-            input_usuario = prompt_texto
-            conteudo_gemini = [
-                f"Aja como o paciente: {st.session_state.contexto}. Responda à pergunta do médico: {prompt_texto}"
-            ]
-
-        # Se houver uma nova pergunta, gera a resposta do paciente
-        if input_usuario:
-            st.session_state.messages.append({"role": "user", "content": input_usuario})
+        # Campo de entrada de texto para o aluno
+        if prompt_aluno := st.chat_input("Pergunte algo ao paciente..."):
+            # Adiciona mensagem do aluno ao histórico
+            st.session_state.messages.append({"role": "user", "content": prompt_aluno})
             with st.chat_message("user"):
-                st.markdown(input_usuario)
+                st.markdown(prompt_aluno)
 
+            # Gera resposta do paciente
             with st.spinner("O paciente está respondendo..."):
                 try:
-                    response = model.generate_content(conteudo_gemini)
+                    # Instrução de sistema combinada com a pergunta
+                    prompt_sistema = f"Aja estritamente como o seguinte paciente: {st.session_state.contexto}. Responda apenas como o paciente, de forma natural e humana. Não dê diagnósticos médicos. Pergunta do aluno: {prompt_aluno}"
+                    
+                    response = model.generate_content(prompt_sistema)
                     texto_resposta = response.text
                     
                     with st.chat_message("assistant"):
                         st.markdown(texto_resposta)
-                        
-                        # Converte resposta em voz (TTS)
-                        tts = gTTS(text=texto_resposta, lang='pt', slow=False)
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_mp3:
-                            tts.save(tmp_mp3.name)
-                            st.audio(tmp_mp3.name, format="audio/mp3", autoplay=True)
                     
                     st.session_state.messages.append({"role": "assistant", "content": texto_resposta})
                 except Exception as e:
-                    st.error(f"Erro: {e}")
+                    st.error(f"Erro na resposta do paciente: {e}")
 
 else:
-    # Mensagem inicial caso o professor ainda não tenha configurado nada
-    st.warning("⚠️ Professor: Acesse a barra lateral, insira sua API Key e configure o Caso Clínico para começar.")
+    # Caso o app abra e não tenha configuração
+    if not api_key:
+        st.warning("⚠️ Professor: Insira sua Gemini API Key no menu lateral.")
+    elif "contexto" not in st.session_state:
+        st.info("👋 Professor: Configure o Caso Clínico no menu lateral e clique em 'Iniciar'.")
+    
     st.image("https://cdn-icons-png.flaticon.com/512/387/387561.png", width=100)
