@@ -10,7 +10,7 @@ with st.sidebar:
     api_key = st.text_input("Insira sua Gemini API Key:", type="password")
     senha_prof = st.text_input("Senha do Professor (para editar o caso):", type="password")
     
-    if senha_prof == "medicina123": # Você pode mudar essa senha
+    if senha_prof == "L@uvitorino1977": # Você pode mudar essa senha
         st.subheader("Configuração do Caso Clínico")
         caso = st.text_area("Instruções de comportamento e prontuário:", 
                             height=300,
